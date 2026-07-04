@@ -5,7 +5,7 @@ description: Manage Coolify through the Coolify Code Mode MCP server. Use when a
 
 # Coolify Code Mode
 
-Use the Coolify MCP server through Cloudflare-style Code Mode. Prefer `guide` for workflow rules, `search` for discovery, and `execute` for operational work.
+Use the Coolify MCP server through guided Code Mode. Prefer `guide` for workflow rules, `search` for discovery, and `execute` for operational work.
 
 ## Workflow
 

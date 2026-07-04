@@ -1,6 +1,6 @@
 # Coolify Code Mode MCP
 
-This project exposes the full Coolify API to AI agents through a Cloudflare-style Code Mode MCP interface.
+This project exposes the full Coolify API to AI agents through a guided Code Mode MCP interface.
 
 Instead of registering one MCP tool for every Coolify endpoint, the server exposes three compact tools:
 
@@ -174,7 +174,6 @@ type OperationClassification = {
   risk: "read" | "low" | "mutating" | "destructive" | "admin";
   mutates: boolean;
   destructive: boolean;
-  guidance: string;
 };
 ```
 
@@ -230,7 +229,7 @@ By default:
 
 Coolify has side-effecting GET endpoints such as deploy, start, stop, restart, enable, and disable. The operation catalog marks these as operational/admin mutations even though their HTTP method is GET.
 
-This local Node.js sandbox is a guardrail, not a hard production isolation boundary like Cloudflare Workers. Run it only for trusted MCP clients and rely on Coolify token scopes for final authorization.
+This local Node.js sandbox is a guardrail, not a hard production isolation boundary. Run it only for trusted MCP clients and rely on Coolify token scopes for final authorization.
 
 ## Documentation
 

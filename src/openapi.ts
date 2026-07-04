@@ -1,15 +1,11 @@
 import { readFileSync } from "node:fs";
-import { classifyOperationTarget } from "./guidance.js";
+import { buildOperationCatalog } from "./catalog.js";
 import { COOLIFY_OPENAPI_SPEC } from "./openapi-spec.js";
 import type {
-  HttpMethod,
-  OpenApiOperation,
   OpenApiSpec,
   OperationCatalogEntry,
   OperationSearchCriteria,
 } from "./types.js";
-
-const METHODS = ["get", "post", "put", "patch", "delete"] as const;
 
 let cachedSpec: OpenApiSpec | undefined;
 let cachedCatalog: OperationCatalogEntry[] | undefined;
@@ -42,50 +38,7 @@ export function loadOpenApiSpec(): OpenApiSpec {
 export function getOperationCatalog(): OperationCatalogEntry[] {
   if (cachedCatalog) return cachedCatalog;
 
-  const spec = loadOpenApiSpec();
-  const catalog: OperationCatalogEntry[] = [];
-
-  for (const [apiPath, pathItem] of Object.entries(spec.paths)) {
-    for (const method of METHODS) {
-      const operation = pathItem[method] as OpenApiOperation | undefined;
-      if (!operation) continue;
-
-      const operationId = operation.operationId ?? `${method}-${apiPath}`;
-      const httpMethod = method.toUpperCase() as HttpMethod;
-      const classification = classifyOperationTarget(httpMethod, apiPath, operationId);
-      const parameters = operation.parameters ?? [];
-      const pathParameters = parameters
-        .filter((parameter) => parameter.in === "path")
-        .map((parameter) => parameter.name);
-      const queryParameters = parameters
-        .filter((parameter) => parameter.in === "query")
-        .map((parameter) => parameter.name);
-      const requiredParameters = parameters
-        .filter((parameter) => parameter.required)
-        .map((parameter) => parameter.name);
-
-      catalog.push({
-        operationId,
-        method: httpMethod,
-        path: apiPath,
-        tag: operation.tags?.[0] ?? "System",
-        summary: operation.summary ?? "",
-        description: operation.description ?? "",
-        ...classification,
-        pathParameters,
-        queryParameters,
-        requiredParameters,
-        hasRequestBody: Boolean(operation.requestBody),
-        requestBodyRequired: Boolean(
-          typeof operation.requestBody === "object" &&
-            operation.requestBody !== null &&
-            "required" in operation.requestBody &&
-            operation.requestBody.required,
-        ),
-        responseCodes: Object.keys(operation.responses ?? {}),
-      });
-    }
-  }
+  const catalog = buildOperationCatalog(loadOpenApiSpec());
 
   cachedCatalog = catalog;
   cachedByOperationId = new Map(catalog.map((operation) => [operation.operationId, operation]));
@@ -136,7 +89,6 @@ export function findOperations(criteria: OperationSearchCriteria = {}): Operatio
         operation.safetyCategory,
         operation.actionType,
         operation.risk,
-        operation.guidance,
         operation.pathParameters.join(" "),
         operation.queryParameters.join(" "),
       ]

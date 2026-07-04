@@ -18,7 +18,6 @@ export type OperationClassification = {
   risk: OperationRisk;
   mutates: boolean;
   destructive: boolean;
-  guidance: string;
 };
 
 export type OpenApiSpec = {
@@ -72,7 +71,6 @@ export type OperationCatalogEntry = {
   risk: OperationRisk;
   mutates: boolean;
   destructive: boolean;
-  guidance: string;
   pathParameters: string[];
   queryParameters: string[];
   requiredParameters: string[];

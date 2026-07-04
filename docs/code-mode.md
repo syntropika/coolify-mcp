@@ -45,7 +45,7 @@ async () => {
 ```
 
 Operation catalog entries include `safetyCategory`, `actionType`, `risk`, `mutates`,
-`destructive`, and `guidance`. Use those fields to distinguish read-only operations
+and `destructive`. Use those fields to distinguish read-only operations
 from Coolify's side-effecting GET endpoints such as deploy, start, stop, restart,
 enable, and disable.
 
@@ -144,7 +144,7 @@ catalog marks them as operational or admin mutations.
 
 ## Agent Guidance
 
-Follow this Cloudflare-style sequence:
+Follow this guided sequence:
 
 1. `guide` for workflow rules when the task touches deploys, logs, env vars, lifecycle, backups, or deletes.
 2. `search` to discover operation IDs and inspect classification.

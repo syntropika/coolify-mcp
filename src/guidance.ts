@@ -1,5 +1,3 @@
-import type { HttpMethod, OperationClassification } from "./types.js";
-
 const CHARS_PER_TOKEN = 4;
 const MAX_TOOL_RESULT_TOKENS = 6_000;
 const MAX_TOOL_RESULT_CHARS = CHARS_PER_TOKEN * MAX_TOOL_RESULT_TOKENS;
@@ -9,7 +7,7 @@ const SECRET_KEY_PATTERN =
 
 export const COOLIFY_AGENT_INSTRUCTIONS = `# Coolify Code Mode MCP
 
-Operate Coolify through a Cloudflare-style Code Mode workflow.
+Operate Coolify through a guided Code Mode workflow.
 
 Core workflow:
 1. Use guide when you need Coolify-specific operating rules.
@@ -27,7 +25,7 @@ Safety categories:
 - configuration: create or update persistent configuration.
 - destructive: delete operations.
 
-This server is local/stdin. It intentionally does not implement Cloudflare-style remote OAuth or multi-tenant hosting.`;
+This server is local/stdin. It intentionally does not implement remote OAuth or multi-tenant hosting.`;
 
 export const SEARCH_TOOL_DESCRIPTION = `Search the embedded Coolify OpenAPI document and operation catalog with model-written JavaScript.
 
@@ -88,7 +86,7 @@ type GuideEntry = {
 const GUIDE_ENTRIES: GuideEntry[] = [
   {
     title: "overview",
-    aliases: ["general", "workflow", "cloudflare-style"],
+    aliases: ["general", "workflow", "guided-code-mode"],
     body: `Coolify agents should follow a search-plan-execute pattern.
 
 - Use search to discover operation IDs and safetyCategory.
@@ -206,89 +204,6 @@ export function getGuide(topic?: string): string {
   }
 
   return `# ${entry.title}\n\n${entry.body}`;
-}
-
-export function classifyOperationTarget(
-  method: HttpMethod,
-  path: string,
-  operationId: string,
-): OperationClassification {
-  if (method === "DELETE") {
-    return {
-      safetyCategory: "destructive",
-      actionType: "delete",
-      risk: "destructive",
-      mutates: true,
-      destructive: true,
-      guidance: "Destructive delete. Prefer dryRun first and require explicit user intent before allowDestructive.",
-    };
-  }
-
-  const target = `${operationId} ${path}`.toLowerCase();
-  if (/(^|[-/])(enable|disable)([-/]|$)/.test(target)) {
-    return {
-      safetyCategory: "operational",
-      actionType: "system",
-      risk: "admin",
-      mutates: true,
-      destructive: false,
-      guidance: "Administrative system action. Confirm intent and return the exact endpoint/result.",
-    };
-  }
-
-  if (operationId.startsWith("deploy-") || path === "/deploy") {
-    return {
-      safetyCategory: "operational",
-      actionType: "deploy",
-      risk: "mutating",
-      mutates: true,
-      destructive: false,
-      guidance: "Deployment action. Resolve the target UUID/tag first and return affected resources and deployment status.",
-    };
-  }
-
-  if (/(^|[-/])(start|stop|restart|cancel)([-/]|$)/.test(target)) {
-    return {
-      safetyCategory: "operational",
-      actionType: "lifecycle",
-      risk: "mutating",
-      mutates: true,
-      destructive: false,
-      guidance: "Lifecycle action. Resolve the resource UUID first and include only requested options.",
-    };
-  }
-
-  if (/(^|[-/])validate([-/]|$)/.test(target)) {
-    return {
-      safetyCategory: "operational",
-      actionType: "validate",
-      risk: "low",
-      mutates: true,
-      destructive: false,
-      guidance: "Validation action. Usually low risk, but it may contact external providers or update validation state.",
-    };
-  }
-
-  if (method === "POST" || method === "PUT" || method === "PATCH") {
-    const actionType = operationId.startsWith("create-") ? "create" : "update";
-    return {
-      safetyCategory: "configuration",
-      actionType,
-      risk: "mutating",
-      mutates: true,
-      destructive: false,
-      guidance: "Configuration mutation. Use narrow inputs, throwOnError, and return changed fields/UUIDs.",
-    };
-  }
-
-  return {
-    safetyCategory: "read",
-    actionType: "read",
-    risk: "read",
-    mutates: false,
-    destructive: false,
-    guidance: "Read-only operation. Keep returned fields focused and compact.",
-  };
 }
 
 export function formatAsTsv(rows: unknown): string {

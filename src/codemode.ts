@@ -1,5 +1,6 @@
 import vm from "node:vm";
 import { compactRows, formatAsTsv, getGuide, redactSecrets } from "./guidance.js";
+import { getOperationGuidance } from "./operation-policy.js";
 import type { CoolifyRequestInput, OperationSearchCriteria } from "./types.js";
 import {
   findOperations,
@@ -88,7 +89,6 @@ function createCodeModeApi(options: CodeModeRuntimeOptions) {
         risk: operation.risk,
         mutates: operation.mutates,
         destructive: operation.destructive,
-        guidance: operation.guidance,
       };
     },
     describeOperation: async (operationId: string) => {
@@ -103,6 +103,7 @@ function createCodeModeApi(options: CodeModeRuntimeOptions) {
         parameters: rawOperation?.parameters ?? [],
         requestBody: rawOperation?.requestBody,
         responses: rawOperation?.responses ?? {},
+        guidance: getOperationGuidance(operation),
       };
     },
     guide: (topic?: string) => getGuide(topic),

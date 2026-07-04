@@ -46,7 +46,7 @@ test("search can discover operation groups and deployment operations", () => {
   }
 });
 
-test("catalog exposes Cloudflare-style safety categories", () => {
+test("catalog exposes safety categories", () => {
   assert.equal(openApiModule.getOperation("healthcheck").safetyCategory, "read");
   assert.equal(openApiModule.getOperation("healthcheck").mutates, false);
   assert.equal(openApiModule.getOperation("deploy-by-tag-or-uuid").safetyCategory, "operational");
