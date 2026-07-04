@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { classifyOperationTarget } from "./guidance.js";
 import { COOLIFY_OPENAPI_SPEC } from "./openapi-spec.js";
 import type {
   HttpMethod,
@@ -50,6 +51,8 @@ export function getOperationCatalog(): OperationCatalogEntry[] {
       if (!operation) continue;
 
       const operationId = operation.operationId ?? `${method}-${apiPath}`;
+      const httpMethod = method.toUpperCase() as HttpMethod;
+      const classification = classifyOperationTarget(httpMethod, apiPath, operationId);
       const parameters = operation.parameters ?? [];
       const pathParameters = parameters
         .filter((parameter) => parameter.in === "path")
@@ -63,11 +66,12 @@ export function getOperationCatalog(): OperationCatalogEntry[] {
 
       catalog.push({
         operationId,
-        method: method.toUpperCase() as HttpMethod,
+        method: httpMethod,
         path: apiPath,
         tag: operation.tags?.[0] ?? "System",
         summary: operation.summary ?? "",
         description: operation.description ?? "",
+        ...classification,
         pathParameters,
         queryParameters,
         requiredParameters,
@@ -99,6 +103,9 @@ export function findOperations(criteria: OperationSearchCriteria = {}): Operatio
   const query = criteria.query?.trim().toLowerCase();
   const tags = new Set(criteria.tags?.map((tag) => tag.toLowerCase()) ?? []);
   const methods = new Set(criteria.methods ?? []);
+  const safetyCategories = new Set(criteria.safetyCategories ?? []);
+  const actionTypes = new Set(criteria.actionTypes ?? []);
+  const risks = new Set(criteria.risks ?? []);
   const pathIncludes = criteria.pathIncludes?.toLowerCase();
   const limit = Math.min(Math.max(criteria.limit ?? 50, 1), 200);
 
@@ -106,6 +113,15 @@ export function findOperations(criteria: OperationSearchCriteria = {}): Operatio
     .filter((operation) => {
       if (tags.size > 0 && !tags.has(operation.tag.toLowerCase())) return false;
       if (methods.size > 0 && !methods.has(operation.method)) return false;
+      if (safetyCategories.size > 0 && !safetyCategories.has(operation.safetyCategory)) {
+        return false;
+      }
+      if (actionTypes.size > 0 && !actionTypes.has(operation.actionType)) return false;
+      if (risks.size > 0 && !risks.has(operation.risk)) return false;
+      if (criteria.mutates !== undefined && operation.mutates !== criteria.mutates) return false;
+      if (criteria.destructive !== undefined && operation.destructive !== criteria.destructive) {
+        return false;
+      }
       if (pathIncludes && !operation.path.toLowerCase().includes(pathIncludes)) return false;
 
       if (!query) return true;
@@ -117,6 +133,10 @@ export function findOperations(criteria: OperationSearchCriteria = {}): Operatio
         operation.tag,
         operation.summary,
         operation.description,
+        operation.safetyCategory,
+        operation.actionType,
+        operation.risk,
+        operation.guidance,
         operation.pathParameters.join(" "),
         operation.queryParameters.join(" "),
       ]

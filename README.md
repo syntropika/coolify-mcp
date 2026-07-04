@@ -2,8 +2,9 @@
 
 This project exposes the full Coolify API to AI agents through a Cloudflare-style Code Mode MCP interface.
 
-Instead of registering one MCP tool for every Coolify endpoint, the server exposes two tools:
+Instead of registering one MCP tool for every Coolify endpoint, the server exposes three compact tools:
 
+- `guide`: get Coolify-specific operating guidance for deployments, logs, env vars, lifecycle actions, deletes, backups, discovery, and formatting.
 - `search`: run JavaScript against the embedded Coolify OpenAPI document and operation catalog.
 - `execute`: run JavaScript with an authenticated `codemode.request()` helper that can call multiple Coolify API operations inside one MCP tool call.
 
@@ -66,6 +67,14 @@ COOLIFY_CODE_TIMEOUT_MS=15000
 
 ## Code Mode Examples
 
+Get workflow guidance:
+
+```json
+{
+  "topic": "deployments"
+}
+```
+
 Find relevant operations:
 
 ```js
@@ -119,6 +128,18 @@ The MCP `execute` call must include `allowDestructive: true` for `DELETE` operat
 
 ## Tool Contract
 
+### `guide`
+
+Input:
+
+```json
+{
+  "topic": "deletion"
+}
+```
+
+Topics include `overview`, `discovery`, `deployments`, `logs`, `environment`, `lifecycle`, `deletion`, `backups`, and `formatting`.
+
 ### `search`
 
 Input:
@@ -133,9 +154,31 @@ Input:
 Available sandbox API:
 
 - `codemode.spec()`
+- `codemode.specPath()`
 - `codemode.operations()`
 - `codemode.operation(operationId)`
 - `codemode.findOperations(criteria)`
+- `codemode.classifyOperation(operationId)`
+- `codemode.describeOperation(operationId)`
+- `codemode.guide(topic)`
+- `codemode.format.tsv(rows)`
+- `codemode.format.compact(rows, columns?)`
+- `codemode.redactSecrets(value)`
+
+Every operation catalog entry includes:
+
+```ts
+type OperationClassification = {
+  safetyCategory: "read" | "operational" | "configuration" | "destructive";
+  actionType: "read" | "create" | "update" | "delete" | "deploy" | "lifecycle" | "validate" | "system";
+  risk: "read" | "low" | "mutating" | "destructive" | "admin";
+  mutates: boolean;
+  destructive: boolean;
+  guidance: string;
+};
+```
+
+Use `actionTypes`, `risks`, `mutates`, or `destructive` in `findOperations()` when choosing safe operations.
 
 ### `execute`
 
@@ -172,6 +215,8 @@ type CoolifyRequest = {
 
 Prefer `operationId` plus `pathParams` when possible. Raw `method` and `path` are supported for forward compatibility with new Coolify endpoints.
 
+Use `codemode.redactSecrets()` before returning environment variables, private keys, cloud tokens, credentials, or headers. Use `codemode.format.tsv()` or `codemode.format.compact()` for large lists.
+
 ## Safety Model
 
 The Coolify API token stays in the host process. Model-written code receives a request function, not the token.
@@ -180,7 +225,10 @@ By default:
 
 - `DELETE` requests are blocked unless `allowDestructive` is true on the outer `execute` call.
 - `dryRun` records request plans without sending HTTP requests.
+- dry-run plans include action/risk classification and operation guidance.
 - generated code has no `require`, `process`, filesystem, or direct `fetch` binding.
+
+Coolify has side-effecting GET endpoints such as deploy, start, stop, restart, enable, and disable. The operation catalog marks these as operational/admin mutations even though their HTTP method is GET.
 
 This local Node.js sandbox is a guardrail, not a hard production isolation boundary like Cloudflare Workers. Run it only for trusted MCP clients and rely on Coolify token scopes for final authorization.
 

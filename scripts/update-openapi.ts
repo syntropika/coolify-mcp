@@ -3,6 +3,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { classifyOperationTarget } from "../src/guidance.js";
 import type { HttpMethod, OpenApiSpec, OperationCatalogEntry } from "../src/types.js";
 
 const SOURCE_URL =
@@ -26,14 +27,18 @@ for (const [apiPath, pathItem] of Object.entries(spec.paths ?? {})) {
   for (const method of METHODS) {
     const operation = pathItem[method];
     if (!operation) continue;
+    const operationId = operation.operationId ?? `${method}-${apiPath}`;
+    const httpMethod = toHttpMethod(method);
+    const classification = classifyOperationTarget(httpMethod, apiPath, operationId);
     const parameters = operation.parameters ?? [];
     operations.push({
-      operationId: operation.operationId ?? `${method}-${apiPath}`,
-      method: toHttpMethod(method),
+      operationId,
+      method: httpMethod,
       path: apiPath,
       tag: operation.tags?.[0] ?? "System",
       summary: operation.summary ?? "",
       description: operation.description ?? "",
+      ...classification,
       pathParameters: parameters
         .filter((parameter) => parameter.in === "path")
         .map((parameter) => parameter.name),
@@ -94,10 +99,10 @@ function renderOperationsDoc(spec: OpenApiSpec, operations: OperationCatalogEntr
 
   for (const [tag, tagOperations] of [...byTag.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     markdown += `## ${tag}\n\n`;
-    markdown += "| Method | Path | Operation ID | Body | Summary |\n";
-    markdown += "| --- | --- | --- | --- | --- |\n";
+    markdown += "| Method | Path | Operation ID | Action | Risk | Mutates | Body | Summary |\n";
+    markdown += "| --- | --- | --- | --- | --- | --- | --- | --- |\n";
     for (const operation of tagOperations) {
-      markdown += `| ${operation.method} | \`${operation.path}\` | \`${operation.operationId}\` | ${operation.hasRequestBody ? "yes" : "no"} | ${escapePipes(operation.summary)} |\n`;
+      markdown += `| ${operation.method} | \`${operation.path}\` | \`${operation.operationId}\` | ${operation.actionType} | ${operation.risk} | ${operation.mutates ? "yes" : "no"} | ${operation.hasRequestBody ? "yes" : "no"} | ${escapePipes(operation.summary)} |\n`;
     }
     markdown += "\n";
   }

@@ -46,6 +46,12 @@ export function createCoolifyRequest(options: CoolifyClientOptions) {
         url: plan.url.toString(),
         operationId: input.operationId,
         path: plan.path,
+        safetyCategory: plan.operation?.safetyCategory,
+        actionType: plan.operation?.actionType,
+        risk: plan.operation?.risk,
+        mutates: plan.operation?.mutates,
+        destructive: plan.operation?.destructive,
+        guidance: plan.operation?.guidance,
         query: input.query,
         body: input.body,
       };

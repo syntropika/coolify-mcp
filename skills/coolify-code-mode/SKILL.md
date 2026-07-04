@@ -5,15 +5,17 @@ description: Manage Coolify through the Coolify Code Mode MCP server. Use when a
 
 # Coolify Code Mode
 
-Use the Coolify MCP server through Code Mode. Prefer `search` for discovery and `execute` for operational work.
+Use the Coolify MCP server through Cloudflare-style Code Mode. Prefer `guide` for workflow rules, `search` for discovery, and `execute` for operational work.
 
 ## Workflow
 
-1. Call `search` unless you already know the exact operation IDs and parameters.
-2. In `search`, use `codemode.findOperations()` first. Use `codemode.operation()` or `codemode.spec()` only when you need more detail.
-3. Call `execute` with one JavaScript function that performs all dependent Coolify calls and returns only the final result needed by the user.
-4. Use `operationId` and `pathParams` instead of hard-coded raw paths when possible.
-5. Use `throwOnError: true` when a failed HTTP response should stop the workflow.
+1. Call `guide` when the task involves deployments, logs, env vars, lifecycle actions, deletes, backups, discovery, or formatting.
+2. Call `search` unless you already know the exact operation IDs and parameters.
+3. In `search`, use `codemode.findOperations()` first. Use `codemode.describeOperation()` or `codemode.operation()` for one operation's details. Use `codemode.spec()` only when necessary.
+4. Inspect `safetyCategory`, `actionType`, `risk`, `mutates`, and `destructive` before side effects.
+5. Call `execute` with one JavaScript function that performs all dependent Coolify calls and returns only the final result needed by the user.
+6. Use `operationId` and `pathParams` instead of hard-coded raw paths when possible.
+7. Use `throwOnError: true` when a failed HTTP response should stop the workflow.
 
 ## Search Examples
 
@@ -21,7 +23,11 @@ Find deployment operations:
 
 ```js
 async () => {
-  return codemode.findOperations({ query: "deploy", limit: 20 });
+  return codemode.findOperations({
+    query: "deploy",
+    actionTypes: ["deploy"],
+    limit: 20
+  });
 }
 ```
 
@@ -33,6 +39,14 @@ async () => {
     query: "env",
     tags: ["Applications"]
   });
+}
+```
+
+Get operation details before a mutating call:
+
+```js
+async () => {
+  return codemode.describeOperation("deploy-by-tag-or-uuid");
 }
 ```
 
@@ -62,6 +76,21 @@ async () => {
   }
 
   return results;
+}
+```
+
+Return compact resource tables:
+
+```js
+async () => {
+  const apps = await codemode.request({
+    operationId: "list-applications",
+    throwOnError: true
+  });
+
+  return codemode.format.tsv(
+    codemode.format.compact(apps.data, ["name", "uuid", "status", "fqdn"])
+  );
 }
 ```
 
@@ -100,7 +129,14 @@ For `DELETE` operations:
 For credentials and secrets:
 
 - Do not return private key material, tokens, or secret environment values unless the user explicitly asks and has a clear operational need.
+- Use `codemode.redactSecrets()` before returning environment variables, cloud tokens, private keys, credentials, headers, or any secret-bearing object.
 - Prefer summaries for private keys, cloud tokens, and environment variables.
+
+For mutating GET operations:
+
+- Coolify deploy/start/stop/restart/enable/disable routes may mutate state even when they use GET.
+- Treat `actionType: "deploy"`, `actionType: "lifecycle"`, and `risk: "admin"` as side-effecting.
+- Return affected names, UUIDs, and Coolify responses.
 
 For broad changes:
 

@@ -1,5 +1,26 @@
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
+export type OperationSafetyCategory = "read" | "operational" | "configuration" | "destructive";
+export type OperationActionType =
+  | "read"
+  | "create"
+  | "update"
+  | "delete"
+  | "deploy"
+  | "lifecycle"
+  | "validate"
+  | "system";
+export type OperationRisk = "read" | "low" | "mutating" | "destructive" | "admin";
+
+export type OperationClassification = {
+  safetyCategory: OperationSafetyCategory;
+  actionType: OperationActionType;
+  risk: OperationRisk;
+  mutates: boolean;
+  destructive: boolean;
+  guidance: string;
+};
+
 export type OpenApiSpec = {
   openapi: string;
   info?: {
@@ -46,6 +67,12 @@ export type OperationCatalogEntry = {
   tag: string;
   summary: string;
   description: string;
+  safetyCategory: OperationSafetyCategory;
+  actionType: OperationActionType;
+  risk: OperationRisk;
+  mutates: boolean;
+  destructive: boolean;
+  guidance: string;
   pathParameters: string[];
   queryParameters: string[];
   requiredParameters: string[];
@@ -58,6 +85,11 @@ export type OperationSearchCriteria = {
   query?: string;
   tags?: string[];
   methods?: HttpMethod[];
+  safetyCategories?: OperationSafetyCategory[];
+  actionTypes?: OperationActionType[];
+  risks?: OperationRisk[];
+  mutates?: boolean;
+  destructive?: boolean;
   pathIncludes?: string;
   limit?: number;
 };
@@ -87,6 +119,12 @@ export type DryRunRequest = {
   url: string;
   operationId?: string;
   path: string;
+  safetyCategory?: OperationSafetyCategory;
+  actionType?: OperationActionType;
+  risk?: OperationRisk;
+  mutates?: boolean;
+  destructive?: boolean;
+  guidance?: string;
   query?: Record<string, unknown>;
   body?: unknown;
 };
