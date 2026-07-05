@@ -3,7 +3,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { HttpMethod, OpenApiSpec, OperationCatalogEntry } from "../src/types.js";
+import { buildOperationCatalog } from "../src/catalog.js";
+import type { OpenApiSpec, OperationCatalogEntry } from "../src/types.js";
 
 const SOURCE_URL =
   process.env.COOLIFY_OPENAPI_SOURCE_URL ??
@@ -12,7 +13,6 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OPENAPI_PATH = path.join(ROOT, "openapi", "coolify-openapi.json");
 const DOCS_PATH = path.join(ROOT, "docs", "operations.md");
 const GENERATED_SPEC_PATH = path.join(ROOT, "src", "openapi-spec.ts");
-const METHODS = ["get", "post", "put", "patch", "delete"] as const;
 
 const response = await fetch(SOURCE_URL);
 if (!response.ok) {
@@ -20,35 +20,7 @@ if (!response.ok) {
 }
 
 const spec = (await response.json()) as OpenApiSpec;
-const operations: OperationCatalogEntry[] = [];
-
-for (const [apiPath, pathItem] of Object.entries(spec.paths ?? {})) {
-  for (const method of METHODS) {
-    const operation = pathItem[method];
-    if (!operation) continue;
-    const parameters = operation.parameters ?? [];
-    operations.push({
-      operationId: operation.operationId ?? `${method}-${apiPath}`,
-      method: toHttpMethod(method),
-      path: apiPath,
-      tag: operation.tags?.[0] ?? "System",
-      summary: operation.summary ?? "",
-      description: operation.description ?? "",
-      pathParameters: parameters
-        .filter((parameter) => parameter.in === "path")
-        .map((parameter) => parameter.name),
-      queryParameters: parameters
-        .filter((parameter) => parameter.in === "query")
-        .map((parameter) => parameter.name),
-      requiredParameters: parameters
-        .filter((parameter) => parameter.required)
-        .map((parameter) => parameter.name),
-      hasRequestBody: Boolean(operation.requestBody),
-      requestBodyRequired: isRequiredRequestBody(operation.requestBody),
-      responseCodes: Object.keys(operation.responses ?? {}),
-    });
-  }
-}
+const operations = buildOperationCatalog(spec);
 
 operations.sort((a, b) => {
   const tag = a.tag.localeCompare(b.tag);
@@ -94,28 +66,15 @@ function renderOperationsDoc(spec: OpenApiSpec, operations: OperationCatalogEntr
 
   for (const [tag, tagOperations] of [...byTag.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     markdown += `## ${tag}\n\n`;
-    markdown += "| Method | Path | Operation ID | Body | Summary |\n";
-    markdown += "| --- | --- | --- | --- | --- |\n";
+    markdown += "| Method | Path | Operation ID | Action | Risk | Mutates | Body | Summary |\n";
+    markdown += "| --- | --- | --- | --- | --- | --- | --- | --- |\n";
     for (const operation of tagOperations) {
-      markdown += `| ${operation.method} | \`${operation.path}\` | \`${operation.operationId}\` | ${operation.hasRequestBody ? "yes" : "no"} | ${escapePipes(operation.summary)} |\n`;
+      markdown += `| ${operation.method} | \`${operation.path}\` | \`${operation.operationId}\` | ${operation.actionType} | ${operation.risk} | ${operation.mutates ? "yes" : "no"} | ${operation.hasRequestBody ? "yes" : "no"} | ${escapePipes(operation.summary)} |\n`;
     }
     markdown += "\n";
   }
 
   return markdown;
-}
-
-function toHttpMethod(method: (typeof METHODS)[number]): HttpMethod {
-  return method.toUpperCase() as HttpMethod;
-}
-
-function isRequiredRequestBody(requestBody: unknown): boolean {
-  return (
-    typeof requestBody === "object" &&
-    requestBody !== null &&
-    "required" in requestBody &&
-    requestBody.required === true
-  );
 }
 
 function escapePipes(value: string): string {

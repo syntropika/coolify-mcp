@@ -3,6 +3,7 @@ import test from "node:test";
 
 const codemodeModule = await import("../src/codemode.ts");
 const clientModule = await import("../src/client.ts");
+const guidanceModule = await import("../src/guidance.ts");
 
 test("search code can call findOperations", async () => {
   const output = await codemodeModule.runCodeMode(
@@ -50,6 +51,34 @@ test("execute code can perform multiple requests in one call", async () => {
   assert.equal(output.result.projectCount, 2);
   assert.equal(output.result.environmentCalls, 2);
   assert.equal(calls.length, 3);
+});
+
+test("code mode exposes guidance, safety classification, compact formatting, and redaction", async () => {
+  const output = await codemodeModule.runCodeMode(
+    `async () => {
+      const guide = codemode.guide("deployments");
+      const deploy = await codemode.classifyOperation("deploy-by-tag-or-uuid");
+      const described = await codemode.describeOperation("deploy-by-tag-or-uuid");
+      const rows = codemode.format.compact([
+        { name: "web", uuid: "app-1", status: "running", ignored: "large" }
+      ], ["name", "uuid", "status"]);
+      const tsv = codemode.format.tsv(rows);
+      const redacted = codemode.redactSecrets({ name: "TOKEN", value: "short" });
+      return { guideIncludesDeploy: guide.includes("Deployment workflow"), deploy, described, tsv, redacted };
+    }`,
+    {
+      timeoutMs: 5000,
+      includeRequest: false,
+    },
+  );
+
+  assert.equal(output.result.guideIncludesDeploy, true);
+  assert.equal(output.result.deploy.safetyCategory, "operational");
+  assert.equal(output.result.deploy.actionType, "deploy");
+  assert.equal(output.result.deploy.risk, "mutating");
+  assert.equal(output.result.described.queryParameters.includes("uuid"), true);
+  assert.equal(output.result.tsv, "name\tuuid\tstatus\nweb\tapp-1\trunning");
+  assert.equal(output.result.redacted.value, "[REDACTED]");
 });
 
 test("destructive requests are blocked unless explicitly allowed", async () => {
@@ -106,5 +135,17 @@ test("dry run returns request plan when destructive calls are allowed", async ()
 
   assert.equal(output.dryRun, true);
   assert.equal(output.method, "DELETE");
+  assert.equal(output.safetyCategory, "destructive");
+  assert.equal(output.actionType, "delete");
+  assert.equal(output.risk, "destructive");
+  assert.equal(output.destructive, true);
   assert.equal(output.url, "https://coolify.example.com/api/v1/services/service-uuid");
+});
+
+test("tool output formatter truncates large responses with guidance", () => {
+  const output = guidanceModule.stringifyToolResult("x".repeat(30_000));
+
+  assert.ok(output.length < 30_000);
+  assert.match(output, /--- TRUNCATED ---/);
+  assert.match(output, /Use guide\/search with narrower filters/);
 });

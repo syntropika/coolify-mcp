@@ -6,8 +6,9 @@ The Coolify MCP server follows the search-and-execute Code Mode pattern used for
 
 Coolify currently exposes 136 API operations. Registering every endpoint as a native MCP tool would force the model to load every operation schema before it knows which operation it needs.
 
-This server exposes two compact tools:
+This server exposes three compact tools:
 
+- `guide`: retrieve local Coolify workflow guidance.
 - `search`: inspect the embedded OpenAPI document and operation catalog.
 - `execute`: run authenticated Coolify API calls through `codemode.request()`.
 
@@ -24,6 +25,12 @@ codemode.spec(): Promise<OpenApiSpec>
 codemode.operations(): Promise<OperationCatalogEntry[]>
 codemode.operation(operationId: string): Promise<OperationCatalogEntry>
 codemode.findOperations(criteria?: OperationSearchCriteria): Promise<OperationCatalogEntry[]>
+codemode.classifyOperation(operationId: string): Promise<OperationClassification>
+codemode.describeOperation(operationId: string): Promise<OperationCatalogEntry & OpenApiOperationDetails>
+codemode.guide(topic?: string): string
+codemode.format.tsv(rows: object[]): string
+codemode.format.compact(rows: object[], columns?: string[]): object[]
+codemode.redactSecrets(value: unknown): unknown
 ```
 
 Example:
@@ -36,6 +43,11 @@ async () => {
   });
 }
 ```
+
+Operation catalog entries include `safetyCategory`, `actionType`, `risk`, `mutates`,
+and `destructive`. Use those fields to distinguish read-only operations
+from Coolify's side-effecting GET endpoints such as deploy, start, stop, restart,
+enable, and disable.
 
 ## Execute Runtime
 
@@ -64,6 +76,10 @@ async () => {
   return { project: project.data, environments: environments.data };
 }
 ```
+
+Use `codemode.format.tsv()` or `codemode.format.compact()` when returning lists,
+and call `codemode.redactSecrets()` before returning environment variables, private
+keys, cloud tokens, credentials, headers, or other secret-bearing data.
 
 Raw method/path calls are allowed for forward compatibility:
 
@@ -120,6 +136,20 @@ Then run the same code with:
   "dryRun": false
 }
 ```
+
+Dry-run request plans include action/risk classification and per-operation guidance.
+Other mutating operations, including deploy/start/stop/restart and system enable/disable,
+are not blocked by `allowDestructive` because they are not DELETE requests, but the
+catalog marks them as operational or admin mutations.
+
+## Agent Guidance
+
+Follow this guided sequence:
+
+1. `guide` for workflow rules when the task touches deploys, logs, env vars, lifecycle, backups, or deletes.
+2. `search` to discover operation IDs and inspect classification.
+3. `execute` to perform one composed workflow, keeping intermediate API responses inside Code Mode.
+4. Return compact, redacted summaries with affected names and UUIDs.
 
 ## Sandbox Boundary
 

@@ -1,4 +1,6 @@
 import vm from "node:vm";
+import { compactRows, formatAsTsv, getGuide, redactSecrets } from "./guidance.js";
+import { getOperationGuidance } from "./operation-policy.js";
 import type { CoolifyRequestInput, OperationSearchCriteria } from "./types.js";
 import {
   findOperations,
@@ -73,6 +75,43 @@ function createCodeModeApi(options: CodeModeRuntimeOptions) {
       return operation;
     },
     findOperations: async (criteria: OperationSearchCriteria = {}) => findOperations(criteria),
+    classifyOperation: async (operationId: string) => {
+      const operation = getOperation(operationId);
+      if (!operation) {
+        throw new Error(`Unknown Coolify operationId: ${operationId}`);
+      }
+      return {
+        operationId: operation.operationId,
+        method: operation.method,
+        path: operation.path,
+        safetyCategory: operation.safetyCategory,
+        actionType: operation.actionType,
+        risk: operation.risk,
+        mutates: operation.mutates,
+        destructive: operation.destructive,
+      };
+    },
+    describeOperation: async (operationId: string) => {
+      const operation = getOperation(operationId);
+      if (!operation) {
+        throw new Error(`Unknown Coolify operationId: ${operationId}`);
+      }
+      const method = operation.method.toLowerCase();
+      const rawOperation = loadOpenApiSpec().paths[operation.path]?.[method];
+      return {
+        ...operation,
+        parameters: rawOperation?.parameters ?? [],
+        requestBody: rawOperation?.requestBody,
+        responses: rawOperation?.responses ?? {},
+        guidance: getOperationGuidance(operation),
+      };
+    },
+    guide: (topic?: string) => getGuide(topic),
+    format: {
+      tsv: formatAsTsv,
+      compact: compactRows,
+    },
+    redactSecrets,
   };
 
   if (!options.includeRequest) {

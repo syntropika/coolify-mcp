@@ -1,14 +1,11 @@
 import { readFileSync } from "node:fs";
+import { buildOperationCatalog } from "./catalog.js";
 import { COOLIFY_OPENAPI_SPEC } from "./openapi-spec.js";
 import type {
-  HttpMethod,
-  OpenApiOperation,
   OpenApiSpec,
   OperationCatalogEntry,
   OperationSearchCriteria,
 } from "./types.js";
-
-const METHODS = ["get", "post", "put", "patch", "delete"] as const;
 
 let cachedSpec: OpenApiSpec | undefined;
 let cachedCatalog: OperationCatalogEntry[] | undefined;
@@ -41,47 +38,7 @@ export function loadOpenApiSpec(): OpenApiSpec {
 export function getOperationCatalog(): OperationCatalogEntry[] {
   if (cachedCatalog) return cachedCatalog;
 
-  const spec = loadOpenApiSpec();
-  const catalog: OperationCatalogEntry[] = [];
-
-  for (const [apiPath, pathItem] of Object.entries(spec.paths)) {
-    for (const method of METHODS) {
-      const operation = pathItem[method] as OpenApiOperation | undefined;
-      if (!operation) continue;
-
-      const operationId = operation.operationId ?? `${method}-${apiPath}`;
-      const parameters = operation.parameters ?? [];
-      const pathParameters = parameters
-        .filter((parameter) => parameter.in === "path")
-        .map((parameter) => parameter.name);
-      const queryParameters = parameters
-        .filter((parameter) => parameter.in === "query")
-        .map((parameter) => parameter.name);
-      const requiredParameters = parameters
-        .filter((parameter) => parameter.required)
-        .map((parameter) => parameter.name);
-
-      catalog.push({
-        operationId,
-        method: method.toUpperCase() as HttpMethod,
-        path: apiPath,
-        tag: operation.tags?.[0] ?? "System",
-        summary: operation.summary ?? "",
-        description: operation.description ?? "",
-        pathParameters,
-        queryParameters,
-        requiredParameters,
-        hasRequestBody: Boolean(operation.requestBody),
-        requestBodyRequired: Boolean(
-          typeof operation.requestBody === "object" &&
-            operation.requestBody !== null &&
-            "required" in operation.requestBody &&
-            operation.requestBody.required,
-        ),
-        responseCodes: Object.keys(operation.responses ?? {}),
-      });
-    }
-  }
+  const catalog = buildOperationCatalog(loadOpenApiSpec());
 
   cachedCatalog = catalog;
   cachedByOperationId = new Map(catalog.map((operation) => [operation.operationId, operation]));
@@ -99,6 +56,9 @@ export function findOperations(criteria: OperationSearchCriteria = {}): Operatio
   const query = criteria.query?.trim().toLowerCase();
   const tags = new Set(criteria.tags?.map((tag) => tag.toLowerCase()) ?? []);
   const methods = new Set(criteria.methods ?? []);
+  const safetyCategories = new Set(criteria.safetyCategories ?? []);
+  const actionTypes = new Set(criteria.actionTypes ?? []);
+  const risks = new Set(criteria.risks ?? []);
   const pathIncludes = criteria.pathIncludes?.toLowerCase();
   const limit = Math.min(Math.max(criteria.limit ?? 50, 1), 200);
 
@@ -106,6 +66,15 @@ export function findOperations(criteria: OperationSearchCriteria = {}): Operatio
     .filter((operation) => {
       if (tags.size > 0 && !tags.has(operation.tag.toLowerCase())) return false;
       if (methods.size > 0 && !methods.has(operation.method)) return false;
+      if (safetyCategories.size > 0 && !safetyCategories.has(operation.safetyCategory)) {
+        return false;
+      }
+      if (actionTypes.size > 0 && !actionTypes.has(operation.actionType)) return false;
+      if (risks.size > 0 && !risks.has(operation.risk)) return false;
+      if (criteria.mutates !== undefined && operation.mutates !== criteria.mutates) return false;
+      if (criteria.destructive !== undefined && operation.destructive !== criteria.destructive) {
+        return false;
+      }
       if (pathIncludes && !operation.path.toLowerCase().includes(pathIncludes)) return false;
 
       if (!query) return true;
@@ -117,6 +86,9 @@ export function findOperations(criteria: OperationSearchCriteria = {}): Operatio
         operation.tag,
         operation.summary,
         operation.description,
+        operation.safetyCategory,
+        operation.actionType,
+        operation.risk,
         operation.pathParameters.join(" "),
         operation.queryParameters.join(" "),
       ]

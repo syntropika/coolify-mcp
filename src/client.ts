@@ -6,6 +6,7 @@ import type {
   OperationCatalogEntry,
 } from "./types.js";
 import { getOperation } from "./openapi.js";
+import { getOperationGuidance } from "./operation-policy.js";
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const satisfies readonly HttpMethod[];
 const HTTP_METHOD_SET = new Set<string>(HTTP_METHODS);
@@ -46,6 +47,12 @@ export function createCoolifyRequest(options: CoolifyClientOptions) {
         url: plan.url.toString(),
         operationId: input.operationId,
         path: plan.path,
+        safetyCategory: plan.operation?.safetyCategory,
+        actionType: plan.operation?.actionType,
+        risk: plan.operation?.risk,
+        mutates: plan.operation?.mutates,
+        destructive: plan.operation?.destructive,
+        guidance: plan.operation ? getOperationGuidance(plan.operation) : undefined,
         query: input.query,
         body: input.body,
       };
