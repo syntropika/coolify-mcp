@@ -1,7 +1,15 @@
 {
   "name": "coolify-code-mode-mcp",
   "version": "0.1.0",
-  "description": "Code Mode MCP server for the Coolify API.",
+  "description": "Manage Coolify from AI agents through a local MCP server with API discovery, composed workflows, and dry-run request plans.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/syntropika/coolify-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/syntropika/coolify-mcp/issues"
+  },
+  "homepage": "https://github.com/syntropika/coolify-mcp#readme",
   "type": "module",
   "bin": {
     "coolify-mcp": "./dist/coolify-mcp",
@@ -30,9 +38,14 @@
   "keywords": [
     "coolify",
     "mcp",
+    "mcp-server",
     "model-context-protocol",
     "codemode",
-    "openapi"
+    "code-mode",
+    "openapi",
+    "ai-agents",
+    "self-hosted",
+    "devops"
   ],
   "license": "MIT",
   "dependencies": {
