@@ -1,246 +1,165 @@
 # Coolify Code Mode MCP
 
-This project exposes the full Coolify API to AI agents through a guided Code Mode MCP interface.
+**Manage your Coolify infrastructure from your AI agent.**
 
-Instead of registering one MCP tool for every Coolify endpoint, the server exposes three compact tools:
+A local Model Context Protocol (MCP) server for developers running applications on Coolify. Give your agent access to application status, deployment logs, environment variables, databases, and more through three tools: `guide`, `search`, and `execute`.
 
-- `guide`: get Coolify-specific operating guidance for deployments, logs, env vars, lifecycle actions, deletes, backups, discovery, and formatting.
-- `search`: run JavaScript against the embedded Coolify OpenAPI document and operation catalog.
-- `execute`: run JavaScript with an authenticated `codemode.request()` helper that can call multiple Coolify API operations inside one MCP tool call.
+Code Mode lets the agent compose multiple Coolify API calls in one JavaScript function and return the fields you need. Intermediate responses stay inside the function unless the code returns or logs them.
 
-The generated catalog is based on the current Coolify `v4.x` OpenAPI document and covers 136 operations across Applications, Cloud Tokens, Databases, Deployments, GitHub Apps, Hetzner, Private Keys, Projects, Resources, Scheduled Tasks, Servers, Services, System, and Teams.
+[Quick start](#quick-start) · [Example workflow](#example-workflow) · [Tool reference](docs/tool-reference.md) · [Operation coverage](docs/operations.md)
 
-## Install
+## Put it to work
+
+Once connected, try prompts like these:
+
+| Task | Prompt |
+| --- | --- |
+| Check application status | “List my Coolify applications with their names, UUIDs, and statuses. Do not make any changes.” |
+| Investigate a deployment | “Inspect the latest deployment and recent logs for application `<uuid>`. Summarize the errors without changing anything.” |
+| Inspect configuration | “List the environment variable names for application `<uuid>`. Do not return secret values or make changes.” |
+| Plan a deployment | “Show a dry-run request plan to deploy application `<uuid>`. Do not send the deployment request.” |
+
+These are example instructions for your agent. Read the [safety model](#safety-model) before using workflows that change resources.
+
+## Why Code Mode?
+
+Discover the operation you need, combine related calls, and choose what comes back to the conversation.
+
+| Tool | What it does |
+| --- | --- |
+| `guide` | Provides Coolify workflow guidance for discovery, deployments, logs, environment variables, lifecycle actions, deletion, backups, and formatting. |
+| `search` | Inspects the embedded OpenAPI spec to find operation IDs, parameters, request bodies, and risk classifications. No Coolify credentials required. |
+| `execute` | Runs one or more authenticated API calls and returns your selected results. Supports request previews with `dryRun`. |
+
+The bundled Coolify `v4.x` OpenAPI snapshot covers **136 operations**, including applications, projects, servers, services, databases, deployments, and backups. See the [full operation catalog](docs/operations.md) for coverage and classifications. Coverage reflects the bundled snapshot; your Coolify instance may expose newer endpoints.
+
+## Quick start
+
+You need Git, **Bun 1.3.8 or newer**, an existing Coolify instance with an API token, and an MCP client that can launch local stdio servers.
+
+### 1. Clone and build
 
 ```bash
-bun install
-bun run generate
+git clone https://github.com/syntropika/coolify-mcp.git
+cd coolify-mcp
+bun install --frozen-lockfile
 bun run build
 ```
 
-`bun run build` writes a self-contained executable to:
+This builds `dist/coolify-mcp`, a self-contained executable with the bundled API catalog. You do not need to regenerate the OpenAPI spec to get started.
 
-```bash
-dist/coolify-mcp
-```
+### 2. Connect your MCP client
 
-## Configure
-
-Set these environment variables in the MCP client:
-
-```bash
-COOLIFY_BASE_URL=https://coolify.example.com
-COOLIFY_API_TOKEN=your-coolify-api-token
-```
-
-`COOLIFY_BASE_URL` may be either the instance origin or the API root. Both of these work:
-
-```bash
-https://coolify.example.com
-https://coolify.example.com/api/v1
-```
-
-Optional settings:
-
-```bash
-COOLIFY_OPENAPI_PATH=/absolute/path/to/openapi/coolify-openapi.json
-COOLIFY_REQUEST_TIMEOUT_MS=30000
-COOLIFY_CODE_TIMEOUT_MS=15000
-```
-
-## MCP Client Config
+For clients that use an `mcpServers` configuration, add:
 
 ```json
 {
   "mcpServers": {
     "coolify": {
-      "command": "/absolute/path/to/projects/coolify-mcp/dist/coolify-mcp",
+      "command": "/absolute/path/to/coolify-mcp/dist/coolify-mcp",
       "args": [],
       "env": {
         "COOLIFY_BASE_URL": "https://coolify.example.com",
-        "COOLIFY_API_TOKEN": "your-token"
+        "COOLIFY_API_TOKEN": "your-coolify-api-token"
       }
     }
   }
 }
 ```
 
-## Code Mode Examples
+Replace the command with the absolute path to your built executable and set your instance URL and token. If your client uses another configuration format, enter the same command and environment variables in its local MCP server settings.
 
-Get workflow guidance:
+`COOLIFY_BASE_URL` accepts either the instance origin (`https://coolify.example.com`) or the API root (`https://coolify.example.com/api/v1`). Keep the token in your local client configuration and out of version control.
+
+Reload your client's MCP configuration. It should expose `guide`, `search`, and `execute`; the executable communicates over stdio and is launched by the client.
+
+### 3. Make a read-only first request
+
+Ask your agent:
+
+> List my Coolify applications with their names, UUIDs, and statuses. Do not make any changes.
+
+The [example below](#example-workflow) shows the discovery and API call behind that request. Use a token scoped to the operations you intend to permit.
+
+## Example workflow
+
+The agent can get discovery guidance with `guide`:
 
 ```json
 {
-  "topic": "deployments"
+  "topic": "discovery"
 }
 ```
 
-Find relevant operations:
+Then pass this JavaScript function as the `code` string to `search` to find read-only application operations:
 
 ```js
 async () => {
   return codemode.findOperations({
-    query: "application environment variables",
-    tags: ["Applications"]
+    tags: ["Applications"],
+    mutates: false
   });
 }
 ```
 
-Deploy every application tagged `production` in one MCP call:
+To list applications, pass this function as the `code` string to `execute`:
 
 ```js
 async () => {
   const apps = await codemode.request({
     operationId: "list-applications",
-    query: { tag: "production" }
+    throwOnError: true
   });
 
-  const deployments = [];
-  for (const app of apps.data) {
-    const deployment = await codemode.request({
-      operationId: "deploy-by-tag-or-uuid",
-      query: { uuid: app.uuid }
-    });
-    deployments.push({
-      application: app.name,
-      uuid: app.uuid,
-      status: deployment.status,
-      data: deployment.data
-    });
-  }
-
-  return deployments;
+  return codemode.format.compact(apps.data, ["name", "uuid", "status"]);
 }
 ```
 
-Delete a resource in one call, with explicit destructive permission:
+This makes a read-only API call and returns only those three fields for each application. For composed workflows and request previews, see the [Code Mode guide](docs/code-mode.md) and [tool reference](docs/tool-reference.md).
 
-```js
-async () => {
-  return codemode.request({
-    operationId: "delete-service-by-uuid",
-    pathParams: { uuid: "service-uuid" }
-  });
-}
-```
+## Configuration
 
-The MCP `execute` call must include `allowDestructive: true` for `DELETE` operations.
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `COOLIFY_BASE_URL` | Coolify instance origin or API root. Required for `execute`. | None |
+| `COOLIFY_API_TOKEN` | API token used for Coolify requests. Required for `execute`. | None |
+| `COOLIFY_OPENAPI_PATH` | Absolute path to a custom OpenAPI JSON file. | Bundled spec |
+| `COOLIFY_REQUEST_TIMEOUT_MS` | Timeout for each HTTP request, in milliseconds. | `30000` |
+| `COOLIFY_CODE_TIMEOUT_MS` | Timeout for Code Mode execution, in milliseconds. | `15000` |
 
-## Tool Contract
+`guide` and `search` work without Coolify credentials. `execute` requires both the URL and token, including when `dryRun` is enabled. Each `search` or `execute` call can also set `timeoutMs`; see the [tool reference](docs/tool-reference.md).
 
-### `guide`
+## Safety model
 
-Input:
-
-```json
-{
-  "topic": "deletion"
-}
-```
-
-Topics include `overview`, `discovery`, `deployments`, `logs`, `environment`, `lifecycle`, `deletion`, `backups`, and `formatting`.
-
-### `search`
-
-Input:
-
-```json
-{
-  "code": "async () => { return codemode.findOperations({ query: 'deploy' }); }",
-  "timeoutMs": 15000
-}
-```
-
-Available sandbox API:
-
-- `codemode.spec()`
-- `codemode.specPath()`
-- `codemode.operations()`
-- `codemode.operation(operationId)`
-- `codemode.findOperations(criteria)`
-- `codemode.classifyOperation(operationId)`
-- `codemode.describeOperation(operationId)`
-- `codemode.guide(topic)`
-- `codemode.format.tsv(rows)`
-- `codemode.format.compact(rows, columns?)`
-- `codemode.redactSecrets(value)`
-
-Every operation catalog entry includes:
-
-```ts
-type OperationClassification = {
-  safetyCategory: "read" | "operational" | "configuration" | "destructive";
-  actionType: "read" | "create" | "update" | "delete" | "deploy" | "lifecycle" | "validate" | "system";
-  risk: "read" | "low" | "mutating" | "destructive" | "admin";
-  mutates: boolean;
-  destructive: boolean;
-};
-```
-
-Use `actionTypes`, `risks`, `mutates`, or `destructive` in `findOperations()` when choosing safe operations.
-
-### `execute`
-
-Input:
-
-```json
-{
-  "code": "async () => { return codemode.request({ operationId: 'list-projects' }); }",
-  "allowDestructive": false,
-  "dryRun": false,
-  "timeoutMs": 15000
-}
-```
-
-Available sandbox API:
-
-- all `search` APIs
-- `codemode.request(request)`
-
-`codemode.request()` accepts:
-
-```ts
-type CoolifyRequest = {
-  operationId?: string;
-  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  path?: string;
-  pathParams?: Record<string, string | number | boolean>;
-  query?: Record<string, unknown>;
-  body?: unknown;
-  headers?: Record<string, string>;
-  throwOnError?: boolean;
-};
-```
-
-Prefer `operationId` plus `pathParams` when possible. Raw `method` and `path` are supported for forward compatibility with new Coolify endpoints.
-
-Use `codemode.redactSecrets()` before returning environment variables, private keys, cloud tokens, credentials, or headers. Use `codemode.format.tsv()` or `codemode.format.compact()` for large lists.
-
-## Safety Model
-
-The Coolify API token stays in the host process. Model-written code receives a request function, not the token.
-
-By default:
-
-- `DELETE` requests are blocked unless `allowDestructive` is true on the outer `execute` call.
-- `dryRun` records request plans without sending HTTP requests.
-- dry-run plans include action/risk classification and operation guidance.
-- generated code has no `require`, `process`, filesystem, or direct `fetch` binding.
-
-Coolify has side-effecting GET endpoints such as deploy, start, stop, restart, enable, and disable. The operation catalog marks these as operational/admin mutations even though their HTTP method is GET.
-
-This local Node.js sandbox is a guardrail, not a hard production isolation boundary. Run it only for trusted MCP clients and rely on Coolify token scopes for final authorization.
+- **DELETE is opt-in.** Requests with the `DELETE` method require `allowDestructive: true` on the outer `execute` call, including during a dry run.
+- **Other mutations are not gated by that flag.** Deploy, start, stop, restart, enable, and disable may use GET endpoints. The catalog classifies their side effects; the HTTP method alone does not establish whether a call is read-only.
+- **Preview requests with `dryRun: true`.** It returns request plans without sending HTTP requests, with classifications and guidance for catalog operations. It does not simulate API responses or validate a workflow against live state.
+- **Choose what leaves the runtime.** Use selected fields, `codemode.format.tsv()`, or `codemode.format.compact()` for summaries. Call `codemode.redactSecrets()` before returning environment variables, keys, tokens, credentials, or headers, and inspect the output for secrets.
+- **Use trusted clients and scoped tokens.** The token stays in the host process; generated code receives a request helper and has no direct `process`, `require`, filesystem, or `fetch` binding. The Node.js VM is a local guardrail, not a security isolation boundary. Coolify token scopes provide final authorization.
 
 ## Documentation
 
-- [Code Mode guide](docs/code-mode.md)
-- [Operation coverage](docs/operations.md)
-- [Agent skill](skills/coolify-code-mode/SKILL.md)
+- [Tool reference](docs/tool-reference.md): tool inputs, sandbox APIs, request types, and dry-run behavior.
+- [Code Mode guide](docs/code-mode.md): composed workflows and runtime design.
+- [Operation coverage](docs/operations.md): every operation in the bundled catalog.
+- [Agent skill](skills/coolify-code-mode/SKILL.md): reusable guidance for agents operating Coolify.
 
-## Verify
+## Contributing
+
+Found a confusing setup step or an operation that needs better guidance? [Open an issue](https://github.com/syntropika/coolify-mcp/issues) with a reproducible example and secrets removed. Documentation improvements and focused pull requests are welcome.
+
+Check the bundled snapshot before submitting a change:
 
 ```bash
-bun run verify
+bun run typecheck
+bun test tests/*.test.mjs
+bun run build
 ```
 
-The verification regenerates the OpenAPI catalog and runs tests that prove every operation in the embedded OpenAPI spec is discoverable and addressable through Code Mode.
+For maintainers, `bun run generate` fetches the upstream Coolify `v4.x` OpenAPI spec and rewrites the bundled spec and operation docs. Review catalog changes and update the coverage expectations when refreshing it. `bun run verify` performs that refresh before typechecking, tests, and a build, so it can surface upstream changes beyond your local edit.
+
+If this is useful for your Coolify setup, star the repository to help others find it.
+
+## License
+
+[MIT](LICENSE).

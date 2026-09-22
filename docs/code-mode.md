@@ -119,11 +119,12 @@ Only `results` returns to the model context. The full application list and inter
 
 `DELETE` requests are blocked unless the outer `execute` call includes `allowDestructive: true`.
 
-Use `dryRun: true` to inspect the request plan first:
+Use `dryRun: true` to inspect the request plan first. The DELETE permission check also applies to previews, so include `allowDestructive: true` for this example:
 
 ```json
 {
   "code": "async () => codemode.request({ operationId: 'delete-service-by-uuid', pathParams: { uuid: '...' } })",
+  "allowDestructive": true,
   "dryRun": true
 }
 ```
